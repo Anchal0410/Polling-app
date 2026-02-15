@@ -28,5 +28,19 @@ create table if not exists votes (
 create index if not exists idx_votes_poll_id on votes(poll_id);
 create index if not exists idx_options_poll_id on options(poll_id);
 
--- Enable Realtime for votes so clients can subscribe to new votes.
-alter publication supabase_realtime add table votes;
+-- Allow anonymous (anon) access so the app can create/read polls and votes without auth.
+alter table polls enable row level security;
+alter table options enable row level security;
+alter table votes enable row level security;
+
+create policy "Allow anon read polls" on polls for select using (true);
+create policy "Allow anon insert polls" on polls for insert with check (true);
+
+create policy "Allow anon read options" on options for select using (true);
+create policy "Allow anon insert options" on options for insert with check (true);
+
+create policy "Allow anon read votes" on votes for select using (true);
+create policy "Allow anon insert votes" on votes for insert with check (true);
+
+-- Optional: uncomment to enable Realtime for votes (instant updates). If it errors, leave commented; the app uses polling.
+-- alter publication supabase_realtime add table votes;

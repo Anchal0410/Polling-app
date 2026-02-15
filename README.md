@@ -119,16 +119,83 @@ Good for: a stable, always-on URL like `https://your-poll-app.vercel.app`. Poll 
 
 4. **Optional – custom domain:** In the Vercel project, go to **Settings → Domains** to add your own domain.
 
+### "Poll not found" on Vercel (works on localhost but not on the deployed URL)
+
+On **localhost**, the app keeps polls in **memory** in a single process, so links work. On **Vercel**, each request can run on a different serverless instance with **empty memory**, so polls are not found and you see "Poll not found."
+
+**Fix: use Supabase** so all instances read and write the same database. Follow the steps below, then **redeploy** on Vercel with the env vars set.
+
 ---
 
-## Production: persistent storage (Supabase)
+## Production: persistent storage (Supabase) — required for Vercel
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. In the SQL Editor, run the contents of `supabase/schema.sql` to create `polls`, `options`, and `votes` (and enable Realtime on `votes` if desired).
-3. Copy `.env.example` to `.env.local` and set:
-   - `NEXT_PUBLIC_SUPABASE_URL` – **Project URL** from Supabase (Project Settings → API), e.g. `https://xxxx.supabase.co`. Do **not** use the Postgres connection string (`postgresql://...`).
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` – your project **anon public** key from the same API settings.
-4. Restart the dev server or redeploy. Polls and votes are now persisted and share links remain valid.
+Without Supabase, the **Vercel deployment** cannot persist polls (you get "Poll not found"). Do the following so your deployed app uses a real database.
+
+### Step 1: Create a Supabase project
+
+1. Go to [supabase.com](https://supabase.com) and sign in.
+2. **New project** → choose org, name, password, region → **Create project**.
+
+### Step 2: Create the database tables
+
+1. In the Supabase dashboard, open **SQL Editor**.
+2. Click **New query** and paste the full contents of `supabase/schema.sql` from this repo.
+3. Run the query (Run). If you get an error on the last line (`alter publication supabase_realtime add table votes`), you can remove or comment out that line and run again; the app will still work (real-time will use polling).
+
+### Step 3: Get your API URL and anon key
+
+1. In Supabase, go to **Project Settings** (gear icon) → **API**.
+2. Copy:
+   - **Project URL** (e.g. `https://abcdefgh.supabase.co`) → this is `NEXT_PUBLIC_SUPABASE_URL`. Do **not** use the "Connection string" (postgresql://...).
+   - **anon public** key (under "Project API keys") → this is `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
+### Step 4: Add env vars on Vercel and redeploy
+
+1. Open your project on [vercel.com](https://vercel.com) → **Settings** → **Environment Variables**.
+2. Add:
+   - **Name:** `NEXT_PUBLIC_SUPABASE_URL`  
+     **Value:** your Project URL (e.g. `https://xxxx.supabase.co`)
+   - **Name:** `NEXT_PUBLIC_SUPABASE_ANON_KEY`  
+     **Value:** your anon public key
+3. Save, then go to **Deployments** → open the **⋯** on the latest deployment → **Redeploy** (or push a new commit to trigger a deploy).
+
+### Step 5: Test
+
+1. Open your Vercel URL (e.g. `https://polling-app-liard.vercel.app`).
+2. Create a new poll, then copy the share link.
+3. Open that link in another tab or send it to another device. The poll should load; no more "Poll not found."
+
+**For local development:** You can add the same two variables to a `.env.local` file (or `.env`) in `poll-app` so localhost also uses Supabase and data stays in sync. Restart `npm run dev` after adding them.
+
+### Troubleshooting: "I added env vars but it still doesn't work on Vercel"
+
+1. **Check what the deployed app is using**  
+   Open: **`https://your-app.vercel.app/api/status`** (use your real Vercel URL).  
+   - If you see **`"storage": "memory"`** → the app is **not** using Supabase. The env vars are either missing, wrong, or not applied to the deployment (see below).  
+   - If you see **`"storage": "supabase"`** → Supabase is connected; if you still get "Poll not found", check Supabase **Table Editor → polls** and RLS policies (Step 2 above).
+
+2. **Redeploy after adding or changing env vars**  
+   Adding or editing variables in **Settings → Environment Variables** does **not** change an already-deployed build. You must:  
+   - Go to **Deployments** → **⋯** on the latest deployment → **Redeploy**, or  
+   - Push a new commit to trigger a new deployment.  
+   Then wait for the build to finish and try again.
+
+3. **Set variables for Production**  
+   In **Settings → Environment Variables**, for each variable set **Environment** to **Production** (or check Production + Preview). If they’re only set for Preview, the production URL will not see them.
+
+4. **Exact variable names**  
+   Use exactly:  
+   - `NEXT_PUBLIC_SUPABASE_URL`  
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`  
+   No extra spaces, no different spelling (e.g. `SUPABASE_URL` without `NEXT_PUBLIC_` won’t work for this app).
+
+5. **URL format**  
+   - **Value for URL:** `https://xxxxxxxxxx.supabase.co` (from Supabase **Project Settings → API → Project URL**).  
+   - **Do not use** the "Connection string" that starts with `postgresql://`.  
+   - No trailing slash: use `https://xxx.supabase.co` not `https://xxx.supabase.co/`.
+
+6. **After fixing**  
+   Redeploy, then open `/api/status` again and confirm **`"storage": "supabase"`**. Then create a new poll and open its link; the poll page should load.
 
 ## Fairness / anti-abuse mechanisms
 
